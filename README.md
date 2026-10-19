@@ -39,7 +39,7 @@ If your distribution already provides PySide6, you can create the environment wi
 
 ## Controls
 
-- Click a piece and destination to move. Legal destinations are dotted. Pawn promotion offers Queen, Rook, Bishop or Knight. Castling and en passant follow normal chess rules.
+- Drag and drop a piece to move, or click a piece and then its destination. Illegal drops and drops outside the board return the piece to its original square. Legal destinations are dotted. Pawn promotion offers Queen, Rook, Bishop or Knight. Castling and en passant follow normal chess rules.
 - **Computer plays:** White, Black, Both (self-play), or Neither (manual play). This changes immediately. Selecting White rotates the board automatically.
 - **Options → Search Limits:** fixed seconds per move, fixed depth in plies, combined time/depth (whichever is reached first), increment clocks, or repeating tournament periods. A time limit is a search budget; the engine can finish early for a book or forced move.
 - **Go / Ctrl+G:** ask Arasan to play the current side. **Pause / Space:** pause or resume normal human/computer play. **Move now / Escape:** interrupt the search and use its best move; during analysis, stop without moving.

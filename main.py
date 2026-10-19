@@ -35,6 +35,11 @@ class Board(QWidget):
         self.game = game
         self.setMinimumSize(360,360)
         self.setMouseTracking(True)
+        self.drag_source = None
+        self.drag_origin = None
+        self.drag_position = None
+        self.drag_context = None
+        self.dragging = False
         self.loaded_piece_set = None
         self.pieces = {p.symbol(): QSvgRenderer(QByteArray(chess.svg.piece(p).encode()))
                        for c in [False,True] for t in range(1,7) for p in [chess.Piece(t,c)]}
@@ -79,7 +84,7 @@ class Board(QWidget):
                 if g.hint_move and square in [g.hint_move.from_square,g.hint_move.to_square]:
                     p.setPen(QPen(QColor('#9426ce'),4)); p.drawRect(rect.adjusted(7,7,-7,-7))
                 piece=board.piece_at(square)
-                if piece:
+                if piece and not (self.dragging and square==self.drag_source):
                     if g.opts['piece_set']=='Letters':
                         p.setFont(QFont('DejaVu Sans',int(s*.5),QFont.Bold))
                         p.setPen(QColor('white' if piece.color else 'black'))
@@ -94,29 +99,79 @@ class Board(QWidget):
             for i in range(8):
                 p.drawText(QRectF(ox+i*s,oy+8*s,s,22),Qt.AlignCenter,'hgfedcba'[i] if g.flipped else 'abcdefgh'[i])
                 p.drawText(QRectF(ox-22,oy+i*s,22,s),Qt.AlignCenter,str(i+1 if g.flipped else 8-i))
-    def mousePressEvent(self,event):
+        if self.dragging and self.drag_position is not None:
+            piece=board.piece_at(self.drag_source)
+            if piece:
+                rect=QRectF(self.drag_position.x()-s/2,self.drag_position.y()-s/2,s,s)
+                if g.opts['piece_set']=='Letters':
+                    p.setFont(QFont('DejaVu Sans',int(s*.5),QFont.Bold))
+                    p.setPen(QColor('white' if piece.color else 'black'))
+                    p.drawText(rect,Qt.AlignCenter,piece.symbol().upper())
+                else:
+                    self.pieces[piece.symbol()].render(p,rect.adjusted(s*.08,s*.08,-s*.08,-s*.08))
+    def square_from_position(self,position):
+        ox,oy,size=self.geometry_values()
+        col,row=int((position.x()-ox)//size),int((position.y()-oy)//size)
+        return self.square_at(row,col) if 0<=row<8 and 0<=col<8 else None
+    def can_move(self):
         g=self.game
-        if g.busy and g.search_kind!='idle': return
-        if g.engine_controls(g.board.turn) or g.terminal(): return
-        if g.paused:
-            g.statusBar().showMessage('Press Space (Resume) before making a move.'); return
-        ox,oy,s=self.geometry_values()
-        col,row=int((event.position().x()-ox)//s),int((event.position().y()-oy)//s)
-        if not (0<=row<8 and 0<=col<8): return
-        square=self.square_at(row,col)
-        moves=[m for m in g.board.legal_moves if m.from_square==g.selected and m.to_square==square]
-        if moves:
-            move=moves[0]
-            if move.promotion:
-                choice,ok=QInputDialog.getItem(self,'Promotion','Promote to:',['Queen','Rook','Bishop','Knight'],0,False)
-                if not ok: return
-                move=chess.Move(g.selected,square,{'Queen':5,'Rook':4,'Bishop':3,'Knight':2}[choice])
-            g.play(move)
+        return not (g.paused or g.terminal() or g.engine_controls(g.board.turn)
+                    or (g.busy and g.search_kind!='idle'))
+    def cancel_drag(self):
+        self.drag_source=None; self.drag_origin=None; self.drag_position=None
+        self.drag_context=None; self.dragging=False
+        self.unsetCursor(); self.update()
+    def try_move(self,source,target):
+        g=self.game
+        if not self.can_move() or source is None or target is None: return False
+        moves=[m for m in g.board.legal_moves if m.from_square==source and m.to_square==target]
+        if not moves: return False
+        move=moves[0]
+        if move.promotion:
+            choice,ok=QInputDialog.getItem(self,'Promotion','Promote to:',['Queen','Rook','Bishop','Knight'],0,False)
+            if not ok: return True
+            move=chess.Move(source,target,{'Queen':5,'Rook':4,'Bishop':3,'Knight':2}[choice])
+        if self.can_move(): g.play(move)
+        return True
+    def mousePressEvent(self,event):
+        if event.button()!=Qt.LeftButton: return
+        self.cancel_drag()
+        g=self.game
+        if not self.can_move():
+            if g.paused: g.statusBar().showMessage('Press Space (Resume) before making a move.')
             return
+        square=self.square_from_position(event.position())
+        if square is None: return
+        if self.try_move(g.selected,square): return
         piece=g.board.piece_at(square)
         g.selected=square if piece and piece.color==g.board.turn else None
-        if piece is None and g.opts['error_beep']: QApplication.beep()
+        if g.selected is not None:
+            self.drag_source=square
+            self.drag_origin=event.position()
+            self.drag_position=event.position()
+            self.drag_context=(g.board.fen(),g.flipped)
+        elif g.opts['error_beep']: QApplication.beep()
         self.update()
+    def mouseMoveEvent(self,event):
+        if self.drag_source is None: return
+        if not (event.buttons() & Qt.LeftButton) or not self.can_move() or self.drag_context!=(self.game.board.fen(),self.game.flipped):
+            self.cancel_drag(); return
+        self.drag_position=event.position()
+        if (event.position()-self.drag_origin).manhattanLength()>=QApplication.startDragDistance():
+            self.dragging=True; self.setCursor(Qt.ClosedHandCursor)
+        self.update()
+    def mouseReleaseEvent(self,event):
+        if event.button()!=Qt.LeftButton: return
+        source=self.drag_source
+        valid=self.drag_context==(self.game.board.fen(),self.game.flipped)
+        dragged=self.dragging
+        target=self.square_from_position(event.position())
+        self.cancel_drag()
+        if dragged and valid:
+            if not self.try_move(source,target) and self.game.opts['error_beep']: QApplication.beep()
+    def hideEvent(self,event):
+        self.cancel_drag()
+        super().hideEvent(event)
 
 class Form(QDialog):
     def __init__(self,parent,title):
@@ -257,6 +312,7 @@ class Game(QMainWindow):
             a=self.action(key,title,lambda checked,w=widget:w.setVisible(checked),checkable=True)
             a.setChecked(True); self.menus['View'].addAction(a)
     def refresh(self):
+        self.view.cancel_drag()
         board=self.board
         last=board.peek() if board.move_stack else None
         if last:
@@ -461,7 +517,7 @@ class Game(QMainWindow):
             self.finish('0-1' if self.board.turn else '1-0','Resigned.')
     def claim_draw(self):
         if self.board.can_claim_draw(): self.finish('1/2-1/2','Draw claimed.')
-    def flip(self): self.flipped=not self.flipped; self.view.update()
+    def flip(self): self.view.cancel_drag(); self.flipped=not self.flipped; self.view.update()
     def confirm_discard(self):
         if not self.dirty: return True
         choice=QMessageBox.question(self,'Unsaved game','Save this game before continuing?',QMessageBox.Save|QMessageBox.Discard|QMessageBox.Cancel)
@@ -627,7 +683,7 @@ class Game(QMainWindow):
         except (OSError,ValueError,KeyError,TypeError): pass
     def help(self):
         QMessageBox.information(self,'Arasan Paradox Help',
-            'Click a piece, then its destination. Gold marks the last move.\n\n'
+            'Drag a piece to its destination, or click the piece and then the destination. Gold marks the last move.\n\n'
             'Options → Search Limits: fixed seconds, depth in plies, both limits, increment, or tournament clocks.\n'
             'Computer plays selects White, Black, Both, or Neither. Switching sides applies immediately.\n'
             'Back/Forward and Beginning/End browse without deleting moves. Browsing pauses play. Space resumes the chosen sides; Go asks Arasan to play the current side.\n'

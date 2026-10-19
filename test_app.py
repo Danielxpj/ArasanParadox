@@ -122,6 +122,51 @@ class AppTests(unittest.TestCase):
             QTest.mouseClick(g.view,Qt.LeftButton,pos=QPoint(int(ox+4.5*size),int(oy+(row+.5)*size)))
         self.assertEqual(g.board.peek().uci(),'e2e4')
         self.assertIn('e2 → e4',g.last.text())
+    def drag_piece(self,source,target,assert_drag=True):
+        from PySide6.QtTest import QTest
+        from PySide6.QtCore import QPoint, Qt
+        g=self.g; g.show(); APP.processEvents()
+        ox,oy,size=g.view.geometry_values()
+        def point(square):
+            col=chess.square_file(square); row=7-chess.square_rank(square)
+            if g.flipped: col,row=7-col,7-row
+            return QPoint(int(ox+(col+.5)*size),int(oy+(row+.5)*size))
+        start=point(chess.parse_square(source))
+        end=point(chess.parse_square(target)) if target else QPoint(0,0)
+        QTest.mousePress(g.view,Qt.LeftButton,pos=start)
+        QTest.mouseMove(g.view,end,delay=10)
+        if assert_drag: self.assertTrue(g.view.dragging)
+        QTest.mouseRelease(g.view,Qt.LeftButton,pos=end)
+        APP.processEvents()
+    def test_drag_legal_move_and_flipped_board(self):
+        g=self.g; g.paused=False
+        self.drag_piece('e2','e4')
+        self.assertEqual(g.board.peek().uci(),'e2e4')
+        self.assertIn('e2 → e4',g.last.text())
+        g.flip(); self.drag_piece('d7','d5')
+        self.assertEqual(g.board.peek().uci(),'d7d5')
+        self.assertFalse(g.view.dragging)
+    def test_drag_illegal_and_outside_drops(self):
+        g=self.g; g.paused=False; initial=g.board.fen()
+        self.drag_piece('e2','e5'); self.assertEqual(g.board.fen(),initial)
+        self.drag_piece('e2',None); self.assertEqual(g.board.fen(),initial)
+        self.assertIsNone(g.view.drag_source)
+    def test_drag_capture_and_promotion(self):
+        g=self.g; g.paused=False
+        g.play(chess.Move.from_uci('e2e4')); g.play(chess.Move.from_uci('d7d5'))
+        self.drag_piece('e4','d5'); self.assertEqual(g.board.piece_at(chess.D5),chess.Piece(chess.PAWN,True))
+        game=chess.pgn.Game(); game.setup(chess.Board('4k3/P7/8/8/8/8/8/4K3 w - - 0 1'))
+        g.load_game(game); g.paused=False
+        with patch('main.QInputDialog.getItem',return_value=('Knight',True)):
+            self.drag_piece('a7','a8')
+        self.assertEqual(g.board.piece_at(chess.A8),chess.Piece(chess.KNIGHT,True))
+    def test_drag_blocked_when_paused_or_engine_turn(self):
+        g=self.g; initial=g.board.fen()
+        self.drag_piece('e2','e4',assert_drag=False)
+        self.assertEqual(g.board.fen(),initial)
+        g.computer='White'; g.paused=False
+        self.drag_piece('e2','e4',assert_drag=False)
+        self.assertEqual(g.board.fen(),initial)
     def test_recovery_preserves_position(self):
         g=self.g; g.opts['autosave']=True
         for uci in ['d2d4','d7d5']: g.play(chess.Move.from_uci(uci))
