@@ -10,9 +10,10 @@ import chess
 import chess.pgn
 import chess.svg
 import chess.engine
-from PySide6.QtCore import Qt, QRectF, QTimer, QByteArray, QSettings
+from PySide6.QtCore import Qt, QRectF, QTimer, QByteArray, QSettings, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QColor, QPainter, QPen, QFont
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QMessageBox, QInputDialog,
     QDialog, QFormLayout, QDialogButtonBox, QSpinBox, QDoubleSpinBox, QCheckBox, QLineEdit,
@@ -150,7 +151,7 @@ class Board(QWidget):
             self.drag_origin=event.position()
             self.drag_position=event.position()
             self.drag_context=(g.board.fen(),g.flipped)
-        elif g.opts['error_beep']: QApplication.beep()
+        elif g.opts['error_beep']: g.play_beep()
         self.update()
     def mouseMoveEvent(self,event):
         if self.drag_source is None: return
@@ -168,7 +169,7 @@ class Board(QWidget):
         target=self.square_from_position(event.position())
         self.cancel_drag()
         if dragged and valid:
-            if not self.try_move(source,target) and self.game.opts['error_beep']: QApplication.beep()
+            if not self.try_move(source,target) and self.game.opts['error_beep']: self.game.play_beep()
     def hideEvent(self,event):
         self.cancel_drag()
         super().hideEvent(event)
@@ -211,6 +212,9 @@ class Game(QMainWindow):
         self.filename=None; self.dirty=False
         self.flipped=False; self.selected=None; self.hint_move=None
         self.computer='Black'; self.paused=False
+        self.beep_sound=QSoundEffect(self)
+        self.beep_sound.setSource(QUrl.fromLocalFile(str(Path(__file__).parent/'assets'/'sounds'/'beep.wav')))
+        self.beep_sound.setVolume(0.5)
         self.busy=False; self.worker=None; self.workers=set(); self.generation=0; self.search_kind=None
         self.search_board=None; self.latest_info={}; self.resign_streak=0; self.recorded_game=None
         self.remaining={True:0.,False:0.}; self.last_tick=time.monotonic()
@@ -271,6 +275,12 @@ class Game(QMainWindow):
         self.toolbar=self.addToolBar('Main'); self.toolbar.setMovable(False)
         for key in ['new','open','save','first','back','go','stop','next','last','hint']:
             self.toolbar.addAction(self.actions[key])
+        self.toolbar.addSeparator()
+        self.toolbar.addAction(self.actions['flip'])
+        self.rotate_button=self.toolbar.widgetForAction(self.actions['flip'])
+        self.rotate_button.setAccessibleName('Rotate board')
+        self.rotate_button.setToolTip('Rotate board (Ctrl+R)')
+        self.rotate_button.setFocusPolicy(Qt.StrongFocus)
         self.recent_menu=self.menus['File'].addMenu('Recent files')
         self.refresh_recent_files()
         self.menus['View'].addAction(self.toolbar.toggleViewAction())
@@ -390,7 +400,7 @@ class Game(QMainWindow):
         self.tick(); self.cancel_search(); self.computer=text
         self.color.blockSignals(True); self.color.setCurrentText(text); self.color.blockSignals(False)
         self.side_actions[text].setChecked(True)
-        self.flipped=text=='White'; self.selected=None; self.resign_streak=0
+        self.selected=None; self.resign_streak=0
         self.refresh(); self.save_session(); self.think()
     def think(self):
         if self.paused or self.busy or self.terminal(): return
@@ -483,10 +493,21 @@ class Game(QMainWindow):
             if made%self.opts['moves']==0: self.remaining[mover]+=self.opts['minutes']*60
         self.timeline.clocks[self.timeline.index]=self.remaining.copy()
         self.selected=None; self.hint_move=None; self.dirty=True; self.last_tick=time.monotonic()
-        if self.opts['beep']: QApplication.beep()
+        if self.opts['beep']: self.play_beep()
         self.refresh(); self.save_session()
+        outcome=self.board.outcome()
+        if outcome and outcome.termination==chess.Termination.CHECKMATE:
+            winner='White' if outcome.winner else 'Black'
+            self.finish(outcome.result(),f'Checkmate! {winner} wins.')
+            return
+        if self.board.is_check():
+            self.play_beep()
+            self.statusBar().showMessage('Check!',10000)
         if self.terminal(): self.record_completed_game()
         QTimer.singleShot(0,self.think)
+    def play_beep(self):
+        if self.beep_sound.isLoaded(): self.beep_sound.play()
+        else: QApplication.beep()
     def initial_clocks(self): return {True:self.opts['minutes']*60 if self.timed() else 0.,False:self.opts['minutes']*60 if self.timed() else 0.}
     def reset_clocks(self):
         self.remaining=self.initial_clocks(); self.timeline.clocks={self.timeline.index:self.remaining.copy()}

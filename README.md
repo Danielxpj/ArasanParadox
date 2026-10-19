@@ -40,14 +40,14 @@ If your distribution already provides PySide6, you can create the environment wi
 ## Controls
 
 - Drag and drop a piece to move, or click a piece and then its destination. Illegal drops and drops outside the board return the piece to its original square. Legal destinations are dotted. Pawn promotion offers Queen, Rook, Bishop or Knight. Castling and en passant follow normal chess rules.
-- **Computer plays:** White, Black, Both (self-play), or Neither (manual play). This changes immediately. Selecting White rotates the board automatically.
+- **Computer plays:** White, Black, Both (self-play), or Neither (manual play). This changes immediately and preserves the board orientation.
 - **Options → Search Limits:** fixed seconds per move, fixed depth in plies, combined time/depth (whichever is reached first), increment clocks, or repeating tournament periods. A time limit is a search budget; the engine can finish early for a book or forced move.
 - **Go / Ctrl+G:** ask Arasan to play the current side. **Pause / Space:** pause or resume normal human/computer play. **Move now / Escape:** interrupt the search and use its best move; during analysis, stop without moving.
 - **Back / Ctrl+T, Forward / Ctrl+F, Beginning / Home, End / End:** browse moves without erasing the continuation. Click a move in the table to jump there. Browsing pauses clocks and engine play.
 - **Undo turn / Ctrl+Z:** rewind to the previous human turn. Press Space to resume, then play a different move. Old continuations are retained as PGN variations.
 - **Restart:** return to the game's initial position, including a custom FEN setup. **New / Ctrl+N:** start a standard game.
 - **Hint / Ctrl+H:** mark a suggested move in purple without playing it. **Analyze / Ctrl+A:** analyze the current position until stopped. Gold last-move marks remain visible independently.
-- **Rotate / Ctrl+R:** change board orientation.
+- **Rotate board / Ctrl+R:** change board orientation manually using the toolbar button or keyboard shortcut.
 - **File:** open/save multi-game PGN, recent files, Save As. Comments and variations are preserved. Browse selects games in a PGN collection.
 - **Edit:** copy FEN or PGN; paste FEN or PGN. **Game:** resign or claim an eligible repetition/fifty-move draw.
 - **View:** toggle toolbar, move panel, principal variation, status bar.

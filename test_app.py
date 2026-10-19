@@ -83,9 +83,22 @@ class AppTests(unittest.TestCase):
     def test_computer_white_and_black(self):
         g=self.g; g.opts['mode']='Fixed depth'; g.paused=False
         g.set_computer('White'); pump_until(lambda:g.timeline.end==1)
-        self.assertFalse(g.board.turn); self.assertTrue(g.flipped)
+        self.assertFalse(g.board.turn); self.assertFalse(g.flipped)
         g.set_computer('Black'); pump_until(lambda:g.timeline.end==2)
         self.assertTrue(g.board.turn); self.assertFalse(g.flipped)
+    def test_computer_selection_preserves_manual_orientation(self):
+        g=self.g
+        g.show(); APP.processEvents()
+        self.assertTrue(g.rotate_button.isVisible())
+        self.assertEqual(g.rotate_button.accessibleName(),'Rotate board')
+        for flipped in [True,False]:
+            g.rotate_button.click()
+            self.assertEqual(g.flipped,flipped)
+            for side in ['White','Black','Both','Neither']:
+                g.color.setCurrentText(side)
+                self.assertEqual(g.flipped,flipped)
+                g.side_actions[side].trigger()
+                self.assertEqual(g.flipped,flipped)
     def test_increment_tournament_and_timeout(self):
         g=self.g; g.opts.update(mode='Incremental',minutes=1.,increment=2.)
         g.reset_clocks(); g.play(chess.Move.from_uci('e2e4'))
