@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local research material and the superseded prototype
+references/initial_gui.py
+references/arasan-23.3.png
+# Local settings and game data
+.env
+.env.*
+*.log
+recovery.pgn
+session.json
